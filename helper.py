@@ -256,6 +256,50 @@ def expand_df(times, clustering_labels):
         
     return df
 
+from sklearn.metrics import silhouette_score
+
+def clustering_silhouette(embeddings, n):
+    '''
+    Arg: 
+    embeddings: nunpy array of embeddings we use to do clusterings
+    n: number of clusters
+
+    Return:
+    clustering_labels: labels for which ckuster does the timestamp belong to for different n
+    K: optimal K clusters determined by the silhouette method
+    '''
+    clustering_labels = {}
+    sil = {}
+    for i in range(3, n+1):
+        kmeans = KMeans(n_clusters=i, random_state=0).fit(embeddings)
+#         labels =kmeans.labels_
+        clustering_labels[i] = kmeans.labels_
+#         clustering_labels.append(kmeans.labels_)
+        sil[i] = silhouette_score(embeddings, kmeans.labels_, metric = 'cosine')
+#         sil.append(silhouette_score(embeddings, kmeans.labels_, metric = 'euclidean'))
+
+    if sil:
+        opt_K = max(sil, key= lambda x: sil[x]) 
+        return opt_K, clustering_labels[opt_K]
+    else:
+        return 0, []
+
+
+def expand_df_optK(times, opt_clustering_labels, opt_K):
+    '''
+    Arg: 
+    df: dataframe contains sim score and timestamp
+    clustering_labels: clustering labels for different n
+
+    Return:
+    df: expanded df with clustering info
+    '''
+    df = pd.DataFrame({"timestamp":times})
+    col_name = "cluster k="+str(opt_K)
+    df[col_name] = opt_clustering_labels
+    
+    return df
+
 
 if __name__ == '__main__':
     # get all the info we need for the model and further analysis
