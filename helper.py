@@ -375,8 +375,8 @@ if __name__ == '__main__':
     # get all the info we need for the model and further analysis
     all_documents, all_time, company_index_dict = get_all_data('../out2')
     # train model 
-    model_airbnb = train_doc2vec_model(all_documents, "saved_model_all_companies")
+    model = train_doc2vec_model(all_documents, "saved_model_all_companies")
     # # save all similarity score to csv files
     sim_scores_all_companies(model_airbnb, all_time, company_index_dict)
     # # save all boolean cluster with the optimal K (highest silhouette score) to csv files
-    company_name_list = boolean_cluster_all_companies(model_airbnb, company_index_dict)
+    company_name_list = boolean_cluster_all_companies(model, company_index_dict)
