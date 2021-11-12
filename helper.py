@@ -200,7 +200,7 @@ def sim_scores_all_companies(model, all_timestamps, company_index_dict):
             embedding_lst[i - value[0], :] = embedding
         df = get_sim_scores_embedding(embedding_lst, company_timestamps)
         file_name = key + ".csv"
-        df.to_csv(file_name)
+        df.to_csv('sim_result/'+file_name)
 
 
 # doc embedding for each training corpus
