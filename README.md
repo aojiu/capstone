@@ -14,6 +14,7 @@ Then run the file for the complete pipeline
 ```
 python helper.py
 ```
+The final results will be stored in folder boolean_clustering_optK
 
 ## Pipeline
 The Pipeline is made of several parts.
