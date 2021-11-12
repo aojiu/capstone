@@ -372,6 +372,16 @@ def boolean_cluster_all_companies(model, company_index_dict):
 
 
 if __name__ == '__main__':
+    # create directories
+    if not os.path.exists('sim_result'):
+        os.makedirs('sim_result')
+        print("sim_result is created")
+    if not os.path.exists('boolean_clustering_optK'):
+        os.makedirs('boolean_clustering_optK')
+        print("boolean_clustering_optK is created")
+    if not os.path.exists('clustering_optK'):
+        os.makedirs('clustering_optK')
+        print("clustering_optK is created")
     # get all the info we need for the model and further analysis
     all_documents, all_time, company_index_dict = get_all_data('../out2')
     # train model 
