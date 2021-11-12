@@ -10,6 +10,10 @@
 ### Usage
 Please put this file under the directory ```measuring-founding-strategy``` 
 
+Company html files should be stored in 
+```
+../out2/company_name/timestamp/*.html
+```
 Then run the file for the complete pipeline
 ```
 python helper.py
