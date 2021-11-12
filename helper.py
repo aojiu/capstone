@@ -343,7 +343,7 @@ def boolean_cluster_all_companies(model, company_index_dict):
             if not os.path.exists(outdir1):
                 os.mkdir(outdir1)
 
-            df_cluster_optK.to_csv("/clustering_optK" + company_name + ".csv")
+            df_cluster_optK.to_csv("clustering_optK/" + company_name + ".csv")
 
             ts = df_cluster_optK['timestamp']
             ts_list = []
