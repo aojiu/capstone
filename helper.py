@@ -185,7 +185,9 @@ def sim_scores_all_companies(model, all_timestamps, company_index_dict):
 
     Return:
     Save dataframe
+    sim_scores_dict: a dictionary {company name: corresponding sim score DataFrame} 
     '''
+    sim_scores_dict = {}
     vector_size = model.docvecs.get_normed_vectors()[0].shape[0]
     for key, value in company_index_dict.items():
         company_timestamps = all_timestamps[value[0]:value[1]]
@@ -201,6 +203,9 @@ def sim_scores_all_companies(model, all_timestamps, company_index_dict):
         df = get_sim_scores_embedding(embedding_lst, company_timestamps)
         file_name = key + ".csv"
         df.to_csv('sim_result/'+file_name)
+        sim_scores_dict[key] = df
+
+    return sim_scores_dict
 
 
 # doc embedding for each training corpus
@@ -317,12 +322,13 @@ def boolean_cluster_all_companies(model, company_index_dict):
         Return:
         A list of all the company names for further score column join
         Save cluster and boolean cluster dataframes for each company
+        boolean_cluster_dict: a dictionary {company name: corresponding clustering boolean result DataFrame} 
 
     '''
     company_name_list = []
+    boolean_cluster_dict = {}
 
     for k, v in company_index_dict.items():
-        #     company_name = k.replace('.','_')
         company_name = k
         embeddings = model.dv.vectors[v[0]:v[1]]
         embeddings = np.append(embeddings, np.array([[i] for i in range(embeddings.shape[0])]), axis=1)
@@ -367,8 +373,23 @@ def boolean_cluster_all_companies(model, company_index_dict):
                 os.mkdir(outdir2)
 
             df_cluster_boolean.to_csv("boolean_clustering_optK/" + company_name + ".csv")
+            boolean_cluster_dict[company_name] = df_cluster_boolean
 
-            return company_name_list
+    return company_name_list, boolean_cluster_dict
+
+def combine_dfs(company_name_list, sim_scores_dict, boolean_cluster_dict):
+    """
+    Save combined similarity score + boolean_cluster result + dbscan result for each company
+    """
+    for company_name in company_name_list:
+        df_sim_score = sim_scores_dict[company_name].set_index('timestamp')
+        df_boolean_cluster = boolean_cluster_dict[company_name].set_index('timestamp')
+        combined_df = df_boolean_cluster.join(df_sim_score)
+
+        outdir3 = "./combined"
+        if not os.path.exists(outdir3):
+            os.mkdir(outdir3)
+        combined_df.to_csv("combined/" + company_name + ".csv")
 
 
 if __name__ == '__main__':
@@ -382,11 +403,17 @@ if __name__ == '__main__':
     if not os.path.exists('clustering_optK'):
         os.makedirs('clustering_optK')
         print("clustering_optK is created")
+    if not os.path.exists('combined'):
+        os.makedirs('combined')
+        print("combined is created")
     # get all the info we need for the model and further analysis
     all_documents, all_time, company_index_dict = get_all_data('../out2')
     # train model 
     model = train_doc2vec_model(all_documents, "saved_model_all_companies")
-    # # save all similarity score to csv files
-    sim_scores_all_companies(model, all_time, company_index_dict)
-    # # save all boolean cluster with the optimal K (highest silhouette score) to csv files
-    company_name_list = boolean_cluster_all_companies(model, company_index_dict)
+    # # save all similarity score to csv files, and to our sim scores dictionary
+    sim_scores_dict = sim_scores_all_companies(model, all_time, company_index_dict)
+    # # save clusering result & all boolean cluster with the optimal K (highest silhouette score) to csv files
+    # and save the clustering boolean 
+    company_name_list, boolean_cluster_dict = boolean_cluster_all_companies(model, company_index_dict)
+    # # save combined result to csv files
+    combine_dfs(company_name_list, sim_scores_dict, boolean_cluster_dict)
