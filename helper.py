@@ -273,7 +273,7 @@ def expand_df(times, clustering_labels):
 
 def clustering_silhouette(embeddings, n):
     '''
-    Arg: 
+    Arg:
     embeddings: nunpy array of embeddings we use to do clusterings
     n: number of clusters
 
@@ -293,14 +293,14 @@ def clustering_silhouette(embeddings, n):
 
     if sil:
         opt_K = max(sil, key=lambda x: sil[x])
-        return opt_K, clustering_labels[opt_K]
+        return opt_K, sil[opt_K], clustering_labels[opt_K]
     else:
-        return 0, []
+        return 0, 0, []
 
 
 def expand_df_optK(times, opt_clustering_labels, opt_K):
     '''
-    Arg: 
+    Arg:
     df: dataframe contains sim score and timestamp
     clustering_labels: clustering labels for different n
 
@@ -314,6 +314,63 @@ def expand_df_optK(times, opt_clustering_labels, opt_K):
     return df
 
 
+def get_ave_dist(data):
+  dist_list = []
+  for i in range(len(data)-1):
+  # dist = np.linalg.norm(data[i] - data[i+1])
+    dist_list.append(np.linalg.norm(data[i] - data[i+1]))
+  ave_dist = np.array(dist_list).mean()
+  return ave_dist 
+
+
+def get_dist_std(data):
+  std_list = []
+  for i in range(len(data)-1):
+  # dist = np.linalg.norm(data[i] - data[i+1])
+    std_list.append(np.linalg.norm(data[i] - data[i+1]))
+  dist_std = np.array(dist_list).std()
+  return dist_std, std_list
+
+def dbscan_model(model,company_index_dict):
+  dbscan_dict = {}
+  sil_score_db_dict = {}
+  for comp_name in company_index_dict.keys():
+
+    # add time dimension to vectors
+    data = model.dv.vectors[company_index_dict[comp_name][0]:company_index_dict[comp_name][1]]
+    data = np.append(data, np.array([[i] for i in range(data.shape[0])]), axis=1)
+
+    if len(data) != 1:
+      # initiate DBscan clustering, using average distance as eps
+      ave_dist = get_ave_dist(data)
+      # data_std = get_std_dist(data)
+      dbs = DBSCAN(eps=ave_dist , min_samples=2).fit(data)
+      labels = dbs.labels_
+      # Number of clusters in labels, ignoring noise if present.
+      n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+
+      # get the silhouette score from the dbscan labels
+      # sil_score_db_dict: key is company name, value is a tuple of sil score and the corresponding # of clusters
+      if len(set(labels)) > 1:
+        sil_score_db = silhouette_score(data, labels, metric='cosine')
+        sil_score_db_dict[comp_name] = (sil_score_db, n_clusters)
+      else:
+        sil_score_db_dict[comp_name] = (0, 1)
+
+      #clean output as pivots = 1
+      labels_clean = [0]
+      for i in range(1, len(labels)):
+        if labels[i-1] == labels[i]:
+          labels_clean.append(0)
+        else:
+          labels_clean.append(1)
+    else:
+      labels_clean = [1]
+    dbscan_dict[comp_name] = labels_clean
+
+  return dbscan_dict, sil_score_db_dict
+
+
 def boolean_cluster_all_companies(model, company_index_dict):
     '''
         Arg:
@@ -323,11 +380,14 @@ def boolean_cluster_all_companies(model, company_index_dict):
         Return:
         A list of all the company names for further score column join
         Save cluster and boolean cluster dataframes for each company
-        boolean_cluster_dict: a dictionary {company name: corresponding clustering boolean result DataFrame} 
+        boolean_cluster_dict: a dictionary {company name: corresponding clustering boolean result DataFrame}
 
     '''
     company_name_list = []
     boolean_cluster_dict = {}
+    opt_num_of_clusters_dict = {}
+
+    dbscan_dict, sil_score_db_dict = dbscan_model(model, company_index_dict)
 
     for k, v in company_index_dict.items():
         company_name = k
@@ -340,10 +400,21 @@ def boolean_cluster_all_companies(model, company_index_dict):
         else:
             n = len(embeddings) - 2
 
-        opt_K, opt_clusters = clustering_silhouette(embeddings, n)
+        opt_K, sil_score_optK, opt_clusters = clustering_silhouette(embeddings, n)
 
         if opt_K > 0:
             company_name_list.append(company_name)
+
+            # get the optimal # of clusters between Kmeans and dbscan
+            for db_cn, db_tuple in sil_score_db_dict.items():
+                if db_cn == company_name:
+                    dn_n_clusters = db_tuple[1]
+                    db_sil_score = db_tuple[0]
+                    if db_sil_score >= sil_score_optK:
+                        opt_num_of_clusters_dict[company_name] = (dn_n_clusters, "dbscan")
+                    else:
+                        opt_num_of_clusters_dict[company_name] = (opt_K, "Kmeans")
+
             df_cluster_optK = expand_df_optK(target_times, opt_clusters, opt_K)
             # save dataframe in a new dir called clustering_optK/
             outdir1 = "./clustering_optK"
@@ -376,53 +447,7 @@ def boolean_cluster_all_companies(model, company_index_dict):
             df_cluster_boolean.to_csv("boolean_clustering_optK/" + company_name + ".csv")
             boolean_cluster_dict[company_name] = df_cluster_boolean
 
-    return company_name_list, boolean_cluster_dict
-
-
-def get_ave_dist(data):
-  dist_list = []
-  for i in range(len(data)-1):
-  # dist = np.linalg.norm(data[i] - data[i+1])
-    dist_list.append(np.linalg.norm(data[i] - data[i+1]))
-  ave_dist = np.array(dist_list).mean()
-  return ave_dist 
-
-
-def get_dist_std(data):
-  std_list = []
-  for i in range(len(data)-1):
-  # dist = np.linalg.norm(data[i] - data[i+1])
-    std_list.append(np.linalg.norm(data[i] - data[i+1]))
-  dist_std = np.array(dist_list).std()
-  return dist_std ,std_list
-
-def dbscan_model(model,company_index_dict):
-  dbscan_dict = {}
-  for comp_name in company_index_dict.keys():
-
-    # add time dimension to vectors
-    data = model.dv.vectors[company_index_dict[comp_name][0]:company_index_dict[comp_name][1]]
-    data = np.append(data, np.array([[i] for i in range(data.shape[0])]),axis = 1)
-
-
-    if len(data)!=1:
-      # initiate DBscan clustering, using average distance as eps
-      ave_dist = get_ave_dist(data)
-      # data_std = get_std_dist(data)
-      dbs = DBSCAN(eps=ave_dist , min_samples=2).fit(data)
-      labels = dbs.labels_
-      #clean output as pivots = 1
-      labels_clean = [0]
-      for i in range(1,len(labels)):
-        if labels[i-1] == labels[i]:
-          labels_clean.append(0)
-        else:
-          labels_clean.append(1)
-    else:
-      labels_clean = [1]
-    dbscan_dict[comp_name] = labels_clean
-
-  return dbscan_dict
+    return company_name_list, boolean_cluster_dict, opt_num_of_clusters_dict
 
 
 def combine_dfs(company_name_list, sim_scores_dict, boolean_cluster_dict, dbscan_dict):
@@ -441,6 +466,9 @@ def combine_dfs(company_name_list, sim_scores_dict, boolean_cluster_dict, dbscan
             os.mkdir(outdir3)
         combined_df.to_csv("combined/" + company_name + ".csv")
 
+# Notes for Ningxin
+# For the input K for mapping(K, sensitivity), you might iterate throughthe opt_num_of_clusters_dict as follows:
+# K = opt_num_of_clusters_dict[company_name][0] for company_name in company_name_list
 
 if __name__ == '__main__':
     # create directories
@@ -463,9 +491,12 @@ if __name__ == '__main__':
     # # save all similarity score to csv files, and to our sim scores dictionary
     sim_scores_dict = sim_scores_all_companies(model, all_time, company_index_dict)
     # # save clusering result & all boolean cluster with the optimal K (highest silhouette score) to csv files
-    # and save the clustering boolean 
-    company_name_list, boolean_cluster_dict = boolean_cluster_all_companies(model, company_index_dict)
+    # and save the clustering boolean
+    # get the optimal # of clusters among Kmeans and sbscan models
+    company_name_list, boolean_cluster_dict, opt_num_of_clusters_dict = boolean_cluster_all_companies(model, company_index_dict)
+    # print out the optimal # of clusters for each company and indicate whether is Kmeans or dbscan model
+    print(opt_num_of_clusters_dict)
     
-    dbscan_dict = dbscan_model(model,company_index_dict)
+    dbscan_dict, sil_score_db_dict = dbscan_model(model,company_index_dict)
     # # save combined result to csv files
     combine_dfs(company_name_list, sim_scores_dict, boolean_cluster_dict, dbscan_dict)
