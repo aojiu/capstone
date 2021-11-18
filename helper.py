@@ -8,6 +8,7 @@ from text_analysis.website_text import website_text
 from text_analysis.website_text_dataset import website_text_dataset
 from text_analysis.similarity_estimator import similarity_estimator
 from sklearn.metrics import silhouette_score
+from sklearn.cluster import DBSCAN
 
 import pandas as pd
 import numpy as np
@@ -35,7 +36,7 @@ def get_time_and_webtext(company_folder):
         print(time_folder)
         text = ''
         time = time_folder.split("/")[-1]
-        time_truncate = time[:(len(time) - 1)]
+        time_truncate = time[:(len(time))]
         company_name = time_folder.split("/")[-2]
         for html_file in sorted(glob.glob(time_folder + '/*.html')):
             #             # prepare train documents and times
@@ -377,14 +378,63 @@ def boolean_cluster_all_companies(model, company_index_dict):
 
     return company_name_list, boolean_cluster_dict
 
-def combine_dfs(company_name_list, sim_scores_dict, boolean_cluster_dict):
+
+def get_ave_dist(data):
+  dist_list = []
+  for i in range(len(data)-1):
+  # dist = np.linalg.norm(data[i] - data[i+1])
+    dist_list.append(np.linalg.norm(data[i] - data[i+1]))
+  ave_dist = np.array(dist_list).mean()
+  return ave_dist 
+
+
+def get_dist_std(data):
+  std_list = []
+  for i in range(len(data)-1):
+  # dist = np.linalg.norm(data[i] - data[i+1])
+    std_list.append(np.linalg.norm(data[i] - data[i+1]))
+  dist_std = np.array(dist_list).std()
+  return dist_std ,std_list
+
+def dbscan_model(model,company_index_dict):
+  dbscan_dict = {}
+  for comp_name in company_index_dict.keys():
+
+    # add time dimension to vectors
+    data = model.dv.vectors[company_index_dict[comp_name][0]:company_index_dict[comp_name][1]]
+    data = np.append(data, np.array([[i] for i in range(data.shape[0])]),axis = 1)
+
+
+    if len(data)!=1:
+      # initiate DBscan clustering, using average distance as eps
+      ave_dist = get_ave_dist(data)
+      # data_std = get_std_dist(data)
+      dbs = DBSCAN(eps=ave_dist , min_samples=2).fit(data)
+      labels = dbs.labels_
+      #clean output as pivots = 1
+      labels_clean = [0]
+      for i in range(1,len(labels)):
+        if labels[i-1] == labels[i]:
+          labels_clean.append(0)
+        else:
+          labels_clean.append(1)
+    else:
+      labels_clean = [1]
+    dbscan_dict[comp_name] = labels_clean
+
+  return dbscan_dict
+
+
+def combine_dfs(company_name_list, sim_scores_dict, boolean_cluster_dict, dbscan_dict):
     """
     Save combined similarity score + boolean_cluster result + dbscan result for each company
     """
     for company_name in company_name_list:
         df_sim_score = sim_scores_dict[company_name].set_index('timestamp')
         df_boolean_cluster = boolean_cluster_dict[company_name].set_index('timestamp')
-        combined_df = df_boolean_cluster.join(df_sim_score)
+
+        combined_df = df_sim_score.join(df_boolean_cluster)
+        combined_df['label_db'] = dbscan_dict[company_name][1:]
 
         outdir3 = "./combined"
         if not os.path.exists(outdir3):
@@ -415,5 +465,7 @@ if __name__ == '__main__':
     # # save clusering result & all boolean cluster with the optimal K (highest silhouette score) to csv files
     # and save the clustering boolean 
     company_name_list, boolean_cluster_dict = boolean_cluster_all_companies(model, company_index_dict)
+    
+    dbscan_dict = dbscan_model(model,company_index_dict)
     # # save combined result to csv files
-    combine_dfs(company_name_list, sim_scores_dict, boolean_cluster_dict)
+    combine_dfs(company_name_list, sim_scores_dict, boolean_cluster_dict, dbscan_dict)
