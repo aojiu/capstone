@@ -1,6 +1,12 @@
 import sys
 import os
 
+import nltk
+nltk.download('punkt')
+
+import math
+from scipy.interpolate import interp1d
+
 sys.path.append(os.path.abspath('crawler'))
 sys.path.append(os.path.abspath('download'))
 sys.path.append(os.path.abspath('text_analysis'))
@@ -470,6 +476,50 @@ def combine_dfs(company_name_list, sim_scores_dict, boolean_cluster_dict, dbscan
 # For the input K for mapping(K, sensitivity), you might iterate throughthe opt_num_of_clusters_dict as follows:
 # K = opt_num_of_clusters_dict[company_name][0] for company_name in company_name_list
 
+def sigmoid(x):
+  return(1 / (1 + np.exp(-x)))
+
+def pivot_detect(company_name_list, sensitivity_index, opt_num_of_clusters_dict, sim_scores_dict):
+    '''
+    Arg:
+    company_name_list: a list of company names
+    sensitivity_index: the sensitivity index 1-10
+    opt_num_of_clusters_dict: optimal # of clusters among Kmeans and sbscan models
+    sim_scores_dict: a dictionary {company name: corresponding cosine similarity score DataFrame}
+    
+    Return:
+    sim_scores_dict2: a dictionary {company name: corresponding sim score DataFrame with pivot classification result}
+    '''
+    company_threshold = {}
+    if sensitivity_index < 1 or sensitivity_index > 10:
+        raise ValueError('Sensitivity index must be with 1 to 10')
+        
+    if not os.path.exists('combined_pivot_si' + str(sensitivity_index)):
+        os.makedirs('combined_pivot_si' + str(sensitivity_index))
+        print('combined_pivot_si' + str(sensitivity_index) + " is created")
+    
+    sim_scores_dict2 = sim_scores_dict.copy()
+    
+    mapping = interp1d([0.1, 10],[-1, 10])
+    
+    for company in company_name_list:
+        K = opt_num_of_clusters_dict[company][0]
+        SI = sensitivity_index
+        x = float(mapping(SI/K))
+
+        threshold = sigmoid(x)
+        # store threshold for each company
+        company_threshold[company] = threshold
+
+        company_df = sim_scores_dict2[company]
+        
+        company_df['pivot'] = company_df['similarity'] < threshold
+        company_df['pivot'] = company_df['pivot'].astype(int)
+        company_df.to_csv('combined_pivot_si' + str(sensitivity_index) + "/" + company + ".csv")
+        
+    return sim_scores_dict2
+
+
 if __name__ == '__main__':
     # create directories
     if not os.path.exists('sim_result'):
@@ -495,8 +545,13 @@ if __name__ == '__main__':
     # get the optimal # of clusters among Kmeans and sbscan models
     company_name_list, boolean_cluster_dict, opt_num_of_clusters_dict = boolean_cluster_all_companies(model, company_index_dict)
     # print out the optimal # of clusters for each company and indicate whether is Kmeans or dbscan model
-    print(opt_num_of_clusters_dict)
+    #print(opt_num_of_clusters_dict)
     
     dbscan_dict, sil_score_db_dict = dbscan_model(model,company_index_dict)
     # # save combined result to csv files
     combine_dfs(company_name_list, sim_scores_dict, boolean_cluster_dict, dbscan_dict)
+
+    si = 5
+    # adds pivot detection columns on each similarity score csv files
+    # and save under new directory specifying the sensitivity index
+    similarity_pivot_df = pivot_detect(company_name_list, si, opt_num_of_clusters_dict, sim_scores_dict)
