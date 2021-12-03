@@ -115,7 +115,7 @@ def train_doc2vec_model(documents, save_path):
 
     model = Doc2Vec(documents=final_documents,
                     vector_size=256,
-                    window=7, min_count=3)
+                    window=7, min_count=3, seed = 43)
 
     model.save(save_path + ".word2vec.model")
     return model
@@ -610,18 +610,24 @@ if __name__ == '__main__':
         print("rake is created")
     # get all the info we need for the model and further analysis
     all_documents, all_time, company_index_dict = get_all_data('../out2')
+
     # train model 
     model = train_doc2vec_model(all_documents, "saved_model_all_companies")
+
     # # save all similarity score to csv files, and to our sim scores dictionary
     sim_scores_dict, company_nn_sim = sim_scores_all_companies(model, all_time, company_index_dict)
+
     # use rake to summerize each document to reduce noise in the inference stage
     summarized_all_documents = summerize_docs(all_documents)
+
     # compute similarity scores using rake output and saving similarity scores in a n*n matrix
     rake_nn_sim, embedding_lst_all = sim_scores_all_companies_rake(model, all_time, company_index_dict, summarized_all_documents)
+
     # # save clusering result & all boolean cluster with the optimal K (highest silhouette score) to csv files
     # and save the clustering boolean
     # get the optimal # of clusters among Kmeans and sbscan models
     company_name_list, boolean_cluster_dict, opt_num_of_clusters_dict = boolean_cluster_all_companies(model, company_index_dict)
+    
     # print out the optimal # of clusters for each company and indicate whether is Kmeans or dbscan model
     #print(opt_num_of_clusters_dict)
     
