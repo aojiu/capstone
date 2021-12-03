@@ -195,6 +195,7 @@ def sim_scores_all_companies(model, all_timestamps, company_index_dict):
     sim_scores_dict: a dictionary {company name: corresponding sim score DataFrame} 
     '''
     sim_scores_dict = {}
+    company_nn_sim = {}
     vector_size = model.docvecs.get_normed_vectors()[0].shape[0]
     for key, value in company_index_dict.items():
         company_timestamps = all_timestamps[value[0]:value[1]]
@@ -207,12 +208,15 @@ def sim_scores_all_companies(model, all_timestamps, company_index_dict):
             embedding = model.docvecs.get_normed_vectors()[i]
             # store this target embedding in the numpy array
             embedding_lst[i - value[0], :] = embedding
+        # store all sim scores of a company in a n*n matrix
+        sim_scores_nn =  np.dot(embedding_lst, embedding_lst.T)
+        company_nn_sim[key] = sim_scores_nn
         df = get_sim_scores_embedding(embedding_lst, company_timestamps)
         file_name = key + ".csv"
         df.to_csv('sim_result/'+file_name)
         sim_scores_dict[key] = df
 
-    return sim_scores_dict
+    return sim_scores_dict, company_nn_sim
 
 
 # doc embedding for each training corpus
@@ -519,6 +523,73 @@ def pivot_detect(company_name_list, sensitivity_index, opt_num_of_clusters_dict,
         
     return sim_scores_dict2
 
+def summerize_docs(all_documents):
+    # Uses stopwords for english from NLTK, and all puntuation characters by
+    # default
+    r = Rake()
+
+    # Extraction given the text.
+    summarized_all_documents = []
+    for document in all_documents:
+        r.extract_keywords_from_text(document)
+        phrases = r.get_ranked_phrases()[:10]
+        summerized_doc = [".".join(phrases)]
+        summarized_all_documents.append(summerized_doc)
+    return summarized_all_documents
+
+
+
+def sim_scores_all_companies_rake(model, all_timestamps, company_index_dict, summarized_all_documents):
+    '''
+    Arg: 
+    model: trained doc2vec model
+    all_timestamps: timestamps of documents we want
+    company_index_dict: dictionary with company first index and last last index in the model
+    summarized_all_documents: list of list. documents that are summarized using RAKE. The order is the same all_documents.
+    Return:
+    Save dataframe
+    n*n similarity score list
+    '''
+    # instead of getting the embedding of training docs
+    # we are using the model to do inference on our summarized docs
+    all_embeddings = np.zeros((len(summarized_all_documents), 256))
+    for i in range(len(summarized_all_documents)):
+        takenized_doc = nltk.word_tokenize(summarized_all_documents[i][0])
+        embeddings = model.infer_vector(takenized_doc)
+        all_embeddings[i, :] = embeddings
+    # normalize the vector and do dot product to get n*n consine similarity
+    row_sums = all_embeddings.sum(axis=1)
+    all_embeddings_normed = all_embeddings / row_sums[:, np.newaxis]
+    #
+    vector_size = all_embeddings.shape[1]
+    company_nn_sim = {}
+    for key, value in company_index_dict.items():
+        company_timestamps = all_timestamps[value[0]:value[1]]
+        
+        # each company will have an embedding list
+        embedding_lst = np.zeros((len(company_timestamps), vector_size))
+        # get all embedding for this company
+        for i in range(value[0], value[1]):
+            # get the document embedding using the index
+            embedding = all_embeddings[i, :]
+#             print(sum(embedding))
+#             norm=sum(embedding)
+#             embedding = embedding/norm
+#             print(sum(embedding))
+#             assert(math.isclose(sum(embedding), 1, rel_tol = 1e-2))
+            # store this target embedding in the numpy array
+            embedding_lst[i-value[0], :] = embedding
+        df = get_sim_scores_rake(embedding_lst, company_timestamps)
+        
+        file_name = "rake/"+key+"_rake.csv"
+        df.to_csv(file_name)
+        sim_scores_nn =  np.dot(embedding_lst, embedding_lst.T)
+        company_nn_sim[key] = sim_scores_nn
+    return company_nn_sim, all_embeddings_normed
+        
+        
+
+
 
 if __name__ == '__main__':
     # create directories
@@ -534,12 +605,19 @@ if __name__ == '__main__':
     if not os.path.exists('combined'):
         os.makedirs('combined')
         print("combined is created")
+    if not os.path.exists('rake'):
+        os.makedirs('rake')
+        print("rake is created")
     # get all the info we need for the model and further analysis
     all_documents, all_time, company_index_dict = get_all_data('../out2')
     # train model 
     model = train_doc2vec_model(all_documents, "saved_model_all_companies")
     # # save all similarity score to csv files, and to our sim scores dictionary
-    sim_scores_dict = sim_scores_all_companies(model, all_time, company_index_dict)
+    sim_scores_dict, company_nn_sim = sim_scores_all_companies(model, all_time, company_index_dict)
+    # use rake to summerize each document to reduce noise in the inference stage
+    summarized_all_documents = summerize_docs(all_documents)
+    # compute similarity scores using rake output and saving similarity scores in a n*n matrix
+    rake_nn_sim, embedding_lst_all = sim_scores_all_companies_rake(model, all_time, company_index_dict, summarized_all_documents)
     # # save clusering result & all boolean cluster with the optimal K (highest silhouette score) to csv files
     # and save the clustering boolean
     # get the optimal # of clusters among Kmeans and sbscan models
