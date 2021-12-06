@@ -588,7 +588,49 @@ def sim_scores_all_companies_rake(model, all_timestamps, company_index_dict, sum
     return company_nn_sim, all_embeddings_normed
         
         
+def k_most_similar(model, input_doc, n=None):
 
+    k = len(model.dv)
+    # tokenize and infer the input doc
+    tokenized_doc = nltk.word_tokenize(input_doc.lower())
+    infered_embedding = model.infer_vector(tokenized_doc)
+    # get the most similar doc index and sim score
+    topk_score = []
+    for i in range(k):
+    # compute sim score for each document with the input doc
+        # get embedding for ith doc
+        embedding_i = model.dv.get_vector(i, norm=False)
+        # compute sim score
+        sim_score = np.dot(infered_embedding, embedding_i)/(norm(infered_embedding)*norm(embedding_i))
+        topk_score.append(sim_score)
+    topk_score = np.array(topk_score)
+    topk_ind = topk_score.argsort()[::-1][:n]
+    return topk_score, topk_ind
+
+def k_most_similar_ap(model, input_doc, company_dict, company_name, n=None):
+    # for each input doc we need k predictions
+    # k is the total number of documents
+    # treat this as an document retrieval task
+    topk_score, topk_ind = k_most_similar(model, input_doc, n)
+    print(topk_score)
+    print(topk_ind)
+    # get the range of target index
+    value1, value2 = company_dict[company_name][0], company_dict[company_name][1]
+    target_ind = np.arange(value1, value2)
+    num_target = len(target_ind)
+    num_corr=0
+    total_acc = 0
+    for i in range(len(topk_ind)):
+        # if the retrieval is correct
+        # add acc@i
+        # if not correct add 0
+        if topk_ind[i] in target_ind:
+            num_corr+=1 
+            total_acc += num_corr/(i+1)
+        else:
+            pass
+        
+    return total_acc/len(topk_ind)
 
 
 if __name__ == '__main__':
@@ -622,6 +664,9 @@ if __name__ == '__main__':
 
     # compute similarity scores using rake output and saving similarity scores in a n*n matrix
     rake_nn_sim, embedding_lst_all = sim_scores_all_companies_rake(model, all_time, company_index_dict, summarized_all_documents)
+
+    # sanity check
+    map = k_most_similar_ap(model, all_documents[125], company_index_dict, 'dogbeacon.com', 5)
 
     # # save clusering result & all boolean cluster with the optimal K (highest silhouette score) to csv files
     # and save the clustering boolean
