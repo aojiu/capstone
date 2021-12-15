@@ -1,25 +1,25 @@
-import sys
 import os
+import sys
 
 import nltk
+import RAKE
+from numpy.linalg import norm
+
 nltk.download('punkt')
 
-import math
 from scipy.interpolate import interp1d
 
 sys.path.append(os.path.abspath('crawler'))
 sys.path.append(os.path.abspath('download'))
 sys.path.append(os.path.abspath('text_analysis'))
 from text_analysis.website_text import website_text
-from text_analysis.website_text_dataset import website_text_dataset
-from text_analysis.similarity_estimator import similarity_estimator
 from sklearn.metrics import silhouette_score
 from sklearn.cluster import DBSCAN
 
 import pandas as pd
 import numpy as np
 import glob
-from gensim.parsing.preprocessing import remove_stopwords, preprocess_string, preprocess_documents
+from gensim.parsing.preprocessing import remove_stopwords
 from gensim.models.doc2vec import Doc2Vec, TaggedDocument
 import nltk
 from sklearn.cluster import KMeans
@@ -115,7 +115,7 @@ def train_doc2vec_model(documents, save_path):
 
     model = Doc2Vec(documents=final_documents,
                     vector_size=256,
-                    window=7, min_count=3, seed = 43)
+                    window=7, min_count=3, seed=43)
 
     model.save(save_path + ".word2vec.model")
     return model
@@ -209,11 +209,11 @@ def sim_scores_all_companies(model, all_timestamps, company_index_dict):
             # store this target embedding in the numpy array
             embedding_lst[i - value[0], :] = embedding
         # store all sim scores of a company in a n*n matrix
-        sim_scores_nn =  np.dot(embedding_lst, embedding_lst.T)
+        sim_scores_nn = np.dot(embedding_lst, embedding_lst.T)
         company_nn_sim[key] = sim_scores_nn
         df = get_sim_scores_embedding(embedding_lst, company_timestamps)
         file_name = key + ".csv"
-        df.to_csv('sim_result/'+file_name)
+        df.to_csv('sim_result/' + file_name)
         sim_scores_dict[key] = df
 
     return sim_scores_dict, company_nn_sim
@@ -325,60 +325,61 @@ def expand_df_optK(times, opt_clustering_labels, opt_K):
 
 
 def get_ave_dist(data):
-  dist_list = []
-  for i in range(len(data)-1):
-  # dist = np.linalg.norm(data[i] - data[i+1])
-    dist_list.append(np.linalg.norm(data[i] - data[i+1]))
-  ave_dist = np.array(dist_list).mean()
-  return ave_dist 
+    dist_list = []
+    for i in range(len(data) - 1):
+        # dist = np.linalg.norm(data[i] - data[i+1])
+        dist_list.append(np.linalg.norm(data[i] - data[i + 1]))
+    ave_dist = np.array(dist_list).mean()
+    return ave_dist
 
 
 def get_dist_std(data):
-  std_list = []
-  for i in range(len(data)-1):
-  # dist = np.linalg.norm(data[i] - data[i+1])
-    std_list.append(np.linalg.norm(data[i] - data[i+1]))
-  dist_std = np.array(dist_list).std()
-  return dist_std, std_list
+    std_list = []
+    for i in range(len(data) - 1):
+        # dist = np.linalg.norm(data[i] - data[i+1])
+        std_list.append(np.linalg.norm(data[i] - data[i + 1]))
+    dist_std = np.array(dist_list).std()
+    return dist_std, std_list
 
-def dbscan_model(model,company_index_dict):
-  dbscan_dict = {}
-  sil_score_db_dict = {}
-  for comp_name in company_index_dict.keys():
 
-    # add time dimension to vectors
-    data = model.dv.vectors[company_index_dict[comp_name][0]:company_index_dict[comp_name][1]]
-    data = np.append(data, np.array([[i] for i in range(data.shape[0])]), axis=1)
+def dbscan_model(model, company_index_dict):
+    dbscan_dict = {}
+    sil_score_db_dict = {}
+    for comp_name in company_index_dict.keys():
 
-    if len(data) != 1:
-      # initiate DBscan clustering, using average distance as eps
-      ave_dist = get_ave_dist(data)
-      # data_std = get_std_dist(data)
-      dbs = DBSCAN(eps=ave_dist , min_samples=2).fit(data)
-      labels = dbs.labels_
-      # Number of clusters in labels, ignoring noise if present.
-      n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+        # add time dimension to vectors
+        data = model.dv.vectors[company_index_dict[comp_name][0]:company_index_dict[comp_name][1]]
+        data = np.append(data, np.array([[i] for i in range(data.shape[0])]), axis=1)
 
-      # get the silhouette score from the dbscan labels
-      # sil_score_db_dict: key is company name, value is a tuple of sil score and the corresponding # of clusters
-      if len(set(labels)) > 1:
-        sil_score_db = silhouette_score(data, labels, metric='cosine')
-        sil_score_db_dict[comp_name] = (sil_score_db, n_clusters)
-      else:
-        sil_score_db_dict[comp_name] = (0, 1)
+        if len(data) != 1:
+            # initiate DBscan clustering, using average distance as eps
+            ave_dist = get_ave_dist(data)
+            # data_std = get_std_dist(data)
+            dbs = DBSCAN(eps=ave_dist, min_samples=2).fit(data)
+            labels = dbs.labels_
+            # Number of clusters in labels, ignoring noise if present.
+            n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
 
-      #clean output as pivots = 1
-      labels_clean = [0]
-      for i in range(1, len(labels)):
-        if labels[i-1] == labels[i]:
-          labels_clean.append(0)
+            # get the silhouette score from the dbscan labels
+            # sil_score_db_dict: key is company name, value is a tuple of sil score and the corresponding # of clusters
+            if len(set(labels)) > 1:
+                sil_score_db = silhouette_score(data, labels, metric='cosine')
+                sil_score_db_dict[comp_name] = (sil_score_db, n_clusters)
+            else:
+                sil_score_db_dict[comp_name] = (0, 1)
+
+            # clean output as pivots = 1
+            labels_clean = [0]
+            for i in range(1, len(labels)):
+                if labels[i - 1] == labels[i]:
+                    labels_clean.append(0)
+                else:
+                    labels_clean.append(1)
         else:
-          labels_clean.append(1)
-    else:
-      labels_clean = [1]
-    dbscan_dict[comp_name] = labels_clean
+            labels_clean = [1]
+        dbscan_dict[comp_name] = labels_clean
 
-  return dbscan_dict, sil_score_db_dict
+    return dbscan_dict, sil_score_db_dict
 
 
 def boolean_cluster_all_companies(model, company_index_dict):
@@ -476,12 +477,14 @@ def combine_dfs(company_name_list, sim_scores_dict, boolean_cluster_dict, dbscan
             os.mkdir(outdir3)
         combined_df.to_csv("combined/" + company_name + ".csv")
 
+
 # Notes for Ningxin
 # For the input K for mapping(K, sensitivity), you might iterate throughthe opt_num_of_clusters_dict as follows:
 # K = opt_num_of_clusters_dict[company_name][0] for company_name in company_name_list
 
 def sigmoid(x):
-  return(1 / (1 + np.exp(-x)))
+    return (1 / (1 + np.exp(-x)))
+
 
 def pivot_detect(company_name_list, sensitivity_index, opt_num_of_clusters_dict, sim_scores_dict):
     '''
@@ -497,99 +500,98 @@ def pivot_detect(company_name_list, sensitivity_index, opt_num_of_clusters_dict,
     company_threshold = {}
     if sensitivity_index < 1 or sensitivity_index > 10:
         raise ValueError('Sensitivity index must be with 1 to 10')
-        
+
     if not os.path.exists('combined_pivot_si' + str(sensitivity_index)):
         os.makedirs('combined_pivot_si' + str(sensitivity_index))
         print('combined_pivot_si' + str(sensitivity_index) + " is created")
-    
+
     sim_scores_dict2 = sim_scores_dict.copy()
-    
-    mapping = interp1d([0.1, 10],[-1, 10])
-    
+
+    mapping = interp1d([0.1, 10], [-1, 10])
+
     for company in company_name_list:
         K = opt_num_of_clusters_dict[company][0]
         SI = sensitivity_index
-        x = float(mapping(SI/K))
+        x = float(mapping(SI / K))
 
         threshold = sigmoid(x)
         # store threshold for each company
         company_threshold[company] = threshold
 
         company_df = sim_scores_dict2[company]
-        
+
         company_df['pivot'] = company_df['similarity'] < threshold
         company_df['pivot'] = company_df['pivot'].astype(int)
         company_df.to_csv('combined_pivot_si' + str(sensitivity_index) + "/" + company + ".csv")
-        
+
     return sim_scores_dict2
 
-def summerize_docs(all_documents):
-    # Uses stopwords for english from NLTK, and all puntuation characters by
-    # default
-    r = Rake()
 
-    # Extraction given the text.
-    summarized_all_documents = []
-    for document in all_documents:
-        r.extract_keywords_from_text(document)
-        phrases = r.get_ranked_phrases()[:10]
-        summerized_doc = [".".join(phrases)]
-        summarized_all_documents.append(summerized_doc)
-    return summarized_all_documents
+# def summerize_docs(all_documents):
+#     # Uses stopwords for english from NLTK, and all puntuation characters by
+#     # default
+#     r = Rake()
+#
+#     # Extraction given the text.
+#     summarized_all_documents = []
+#     for document in all_documents:
+#         r.extract_keywords_from_text(document)
+#         phrases = r.get_ranked_phrases()[:10]
+#         summerized_doc = [".".join(phrases)]
+#         summarized_all_documents.append(summerized_doc)
+#     return summarized_all_documents
 
 
+# def sim_scores_all_companies_rake(model, all_timestamps, company_index_dict, summarized_all_documents):
+#     '''
+#     Arg:
+#     model: trained doc2vec model
+#     all_timestamps: timestamps of documents we want
+#     company_index_dict: dictionary with company first index and last last index in the model
+#     summarized_all_documents: list of list. documents that are summarized using RAKE. The order is the same all_documents.
+#     Return:
+#     Save dataframe
+#     n*n similarity score list
+#     '''
+#     # instead of getting the embedding of training docs
+#     # we are using the model to do inference on our summarized docs
+#     all_embeddings = np.zeros((len(summarized_all_documents), 256))
+#     for i in range(len(summarized_all_documents)):
+#         takenized_doc = nltk.word_tokenize(summarized_all_documents[i][0])
+#         embeddings = model.infer_vector(takenized_doc)
+#         all_embeddings[i, :] = embeddings
+#     # normalize the vector and do dot product to get n*n consine similarity
+#     row_sums = all_embeddings.sum(axis=1)
+#     all_embeddings_normed = all_embeddings / row_sums[:, np.newaxis]
+#     #
+#     vector_size = all_embeddings.shape[1]
+#     company_nn_sim = {}
+#     for key, value in company_index_dict.items():
+#         company_timestamps = all_timestamps[value[0]:value[1]]
+#
+#         # each company will have an embedding list
+#         embedding_lst = np.zeros((len(company_timestamps), vector_size))
+#         # get all embedding for this company
+#         for i in range(value[0], value[1]):
+#             # get the document embedding using the index
+#             embedding = all_embeddings[i, :]
+#             #             print(sum(embedding))
+#             #             norm=sum(embedding)
+#             #             embedding = embedding/norm
+#             #             print(sum(embedding))
+#             #             assert(math.isclose(sum(embedding), 1, rel_tol = 1e-2))
+#             # store this target embedding in the numpy array
+#             embedding_lst[i - value[0], :] = embedding
+#         df = get_sim_scores_rake(embedding_lst, company_timestamps)
+#
+#         file_name = "rake/" + key + "_rake.csv"
+#         df.to_csv(file_name)
+#         sim_scores_nn = np.dot(embedding_lst, embedding_lst.T)
+#         company_nn_sim[key] = sim_scores_nn
+#     return company_nn_sim, all_embeddings_normed
 
-def sim_scores_all_companies_rake(model, all_timestamps, company_index_dict, summarized_all_documents):
-    '''
-    Arg: 
-    model: trained doc2vec model
-    all_timestamps: timestamps of documents we want
-    company_index_dict: dictionary with company first index and last last index in the model
-    summarized_all_documents: list of list. documents that are summarized using RAKE. The order is the same all_documents.
-    Return:
-    Save dataframe
-    n*n similarity score list
-    '''
-    # instead of getting the embedding of training docs
-    # we are using the model to do inference on our summarized docs
-    all_embeddings = np.zeros((len(summarized_all_documents), 256))
-    for i in range(len(summarized_all_documents)):
-        takenized_doc = nltk.word_tokenize(summarized_all_documents[i][0])
-        embeddings = model.infer_vector(takenized_doc)
-        all_embeddings[i, :] = embeddings
-    # normalize the vector and do dot product to get n*n consine similarity
-    row_sums = all_embeddings.sum(axis=1)
-    all_embeddings_normed = all_embeddings / row_sums[:, np.newaxis]
-    #
-    vector_size = all_embeddings.shape[1]
-    company_nn_sim = {}
-    for key, value in company_index_dict.items():
-        company_timestamps = all_timestamps[value[0]:value[1]]
-        
-        # each company will have an embedding list
-        embedding_lst = np.zeros((len(company_timestamps), vector_size))
-        # get all embedding for this company
-        for i in range(value[0], value[1]):
-            # get the document embedding using the index
-            embedding = all_embeddings[i, :]
-#             print(sum(embedding))
-#             norm=sum(embedding)
-#             embedding = embedding/norm
-#             print(sum(embedding))
-#             assert(math.isclose(sum(embedding), 1, rel_tol = 1e-2))
-            # store this target embedding in the numpy array
-            embedding_lst[i-value[0], :] = embedding
-        df = get_sim_scores_rake(embedding_lst, company_timestamps)
-        
-        file_name = "rake/"+key+"_rake.csv"
-        df.to_csv(file_name)
-        sim_scores_nn =  np.dot(embedding_lst, embedding_lst.T)
-        company_nn_sim[key] = sim_scores_nn
-    return company_nn_sim, all_embeddings_normed
-        
-        
+
 def k_most_similar(model, input_doc, n=None):
-
     k = len(model.dv)
     # tokenize and infer the input doc
     tokenized_doc = nltk.word_tokenize(input_doc.lower())
@@ -597,15 +599,16 @@ def k_most_similar(model, input_doc, n=None):
     # get the most similar doc index and sim score
     topk_score = []
     for i in range(k):
-    # compute sim score for each document with the input doc
+        # compute sim score for each document with the input doc
         # get embedding for ith doc
         embedding_i = model.dv.get_vector(i, norm=False)
         # compute sim score
-        sim_score = np.dot(infered_embedding, embedding_i)/(norm(infered_embedding)*norm(embedding_i))
+        sim_score = np.dot(infered_embedding, embedding_i) / (norm(infered_embedding) * norm(embedding_i))
         topk_score.append(sim_score)
     topk_score = np.array(topk_score)
     topk_ind = topk_score.argsort()[::-1][:n]
     return topk_score, topk_ind
+
 
 def k_most_similar_ap(model, input_doc, company_dict, company_name, n=None):
     # for each input doc we need k predictions
@@ -618,19 +621,79 @@ def k_most_similar_ap(model, input_doc, company_dict, company_name, n=None):
     value1, value2 = company_dict[company_name][0], company_dict[company_name][1]
     target_ind = np.arange(value1, value2)
     num_target = len(target_ind)
-    num_corr=0
+    num_corr = 0
     total_acc = 0
     for i in range(len(topk_ind)):
         # if the retrieval is correct
         # add acc@i
         # if not correct add 0
         if topk_ind[i] in target_ind:
-            num_corr+=1 
-            total_acc += num_corr/(i+1)
+            num_corr += 1
+            total_acc += num_corr / (i + 1)
         else:
             pass
-        
-    return total_acc/len(topk_ind)
+
+    return total_acc / len(topk_ind)
+
+
+def company_nn_sim_check(company_index_dict, company_nn_sim, n=2, m=2, k=0.1):
+    '''
+        Arg:
+        company_index_dict: dictionary with company first index and last last index in the model
+        company_nn_sim: dictionary with key: company name and value: n*n similarity score list
+        Return:
+
+    '''
+    company_check_dict = {}
+    for key, value in company_index_dict.items():
+        # nxn sim score matrix for each company
+        sim_scores_nn = company_nn_sim[key]
+        # only consider companies with enough timestamps
+        len_ts = sim_scores_nn.shape[0]
+
+        company_check_dict[key] = [0] * len_ts
+        if len_ts > m + n:
+            # get the lower triangular of the sim score matrix
+            tril = np.tril(sim_scores_nn, -1)
+            tril = tril[np.nonzero(tril)]
+            mu = tril.mean()
+            sigma = tril.std()
+            upbd = mu + k * sigma
+            lowbd = mu - k * sigma
+            # Check if the timestamp guarantee a significant change lasts at least certain periods of time
+            # and does not revert back.
+            # The current timestamp has a similarity score satisfying the following conditions:
+            # 1. sim score is significantly different from previous n timestamps
+            # 2. sim score is similar to latter m timestamps
+
+            for x in range(len_ts):
+                check = 0
+                # Case 1: less than n timestamps before xth
+                if x < n:
+                    for y in range(m):
+                        if sim_scores_nn[x][x + y] > upbd or sim_scores_nn[x][x + y] < lowbd:
+                            check += 1
+                # Case 2: less than m timestamps after xth
+                elif len_ts - x < m:
+                    for y in range(n):
+                        if lowbd <= sim_scores_nn[x][x - y] <= upbd:
+                            check += 1
+                # Case 3: more than n timestamps before xth and more than m timestamps after xth
+                elif x >= n and len_ts - x >= m:
+                    for y in range(m):
+                        if x + y <= len_ts:
+                            if sim_scores_nn[x][x + y] > upbd or sim_scores_nn[x][x + y] < lowbd:
+                                check += 1
+
+                    for y in range(n):
+                        if x + y <= len_ts:
+                            if lowbd <= sim_scores_nn[x][x - y] <= upbd:
+                                check += 1
+                if check > 0:
+                    company_check_dict[key][x] = 1
+
+    return company_check_dict
+
 
 
 if __name__ == '__main__':
@@ -658,25 +721,32 @@ if __name__ == '__main__':
 
     # # save all similarity score to csv files, and to our sim scores dictionary
     sim_scores_dict, company_nn_sim = sim_scores_all_companies(model, all_time, company_index_dict)
+    print(company_nn_sim)
 
-    # use rake to summerize each document to reduce noise in the inference stage
-    summarized_all_documents = summerize_docs(all_documents)
-
-    # compute similarity scores using rake output and saving similarity scores in a n*n matrix
-    rake_nn_sim, embedding_lst_all = sim_scores_all_companies_rake(model, all_time, company_index_dict, summarized_all_documents)
+    # # use rake to summerize each document to reduce noise in the inference stage
+    # summarized_all_documents = summerize_docs(all_documents)
+    #
+    # # compute similarity scores using rake output and saving similarity scores in a n*n matrix
+    # rake_nn_sim, embedding_lst_all = sim_scores_all_companies_rake(model, all_time, company_index_dict,
+    #                                                                summarized_all_documents)
 
     # sanity check
     map = k_most_similar_ap(model, all_documents[125], company_index_dict, 'dogbeacon.com', 5)
 
+    # nxn matrix to check if pivot get reverted back or not
+    company_check_dict = company_nn_sim_check(company_index_dict, company_nn_sim)
+    print(company_check_dict)
+
     # # save clusering result & all boolean cluster with the optimal K (highest silhouette score) to csv files
     # and save the clustering boolean
     # get the optimal # of clusters among Kmeans and sbscan models
-    company_name_list, boolean_cluster_dict, opt_num_of_clusters_dict = boolean_cluster_all_companies(model, company_index_dict)
-    
+    company_name_list, boolean_cluster_dict, opt_num_of_clusters_dict = boolean_cluster_all_companies(model,
+                                                                                                      company_index_dict)
+
     # print out the optimal # of clusters for each company and indicate whether is Kmeans or dbscan model
-    #print(opt_num_of_clusters_dict)
-    
-    dbscan_dict, sil_score_db_dict = dbscan_model(model,company_index_dict)
+    # print(opt_num_of_clusters_dict)
+
+    dbscan_dict, sil_score_db_dict = dbscan_model(model, company_index_dict)
     # # save combined result to csv files
     combine_dfs(company_name_list, sim_scores_dict, boolean_cluster_dict, dbscan_dict)
 
