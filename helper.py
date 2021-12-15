@@ -22,6 +22,7 @@ import glob
 from gensim.parsing.preprocessing import remove_stopwords
 from gensim.models.doc2vec import Doc2Vec, TaggedDocument
 import nltk
+from rake_nltk import Rake
 from sklearn.cluster import KMeans
 import os
 
@@ -694,6 +695,109 @@ def company_nn_sim_check(company_index_dict, company_nn_sim, n=2, m=2, k=0.1):
 
     return company_check_dict
 
+# for model evaluation
+def k_most_similar_train(model, doc_ind, n=None):
+
+    k = len(model.dv)
+    # tokenize and infer the input doc
+#     tokenized_doc = nltk.word_tokenize(input_doc.lower())
+    infered_embedding = model.dv.get_vector(doc_ind, norm=False)
+    # get the most similar doc index and sim score
+    topk_score = []
+    for i in range(k):
+    # compute sim score for each document with the input doc
+        # get embedding for ith doc
+        embedding_i = model.dv.get_vector(i, norm=False)
+        # compute sim score
+        sim_score = np.dot(infered_embedding, embedding_i)/(norm(infered_embedding)*norm(embedding_i))
+        topk_score.append(sim_score)
+    topk_score = np.array(topk_score)
+    topk_ind = topk_score.argsort()[::-1][:n]
+    return topk_score, topk_ind
+
+def k_most_similar(model, input_doc, n=None):
+    '''
+    Arg: 
+    model: train doc2vec model
+    input_doc: all the documents we extract from html files
+    company_name: the company we want to measure average precision
+    company_dict: dictionary contains company name and corresponding index in the model
+
+    Return:
+    ap: average precision for the target company
+    '''
+    k = len(model.dv)
+    # tokenize and infer the input doc
+    tokenized_doc = nltk.word_tokenize(input_doc.lower())
+    infered_embedding = model.infer_vector(tokenized_doc)
+    # get the most similar doc index and sim score
+    topk_score = []
+    for i in range(k):
+    # compute sim score for each document with the input doc
+        # get embedding for ith doc
+        embedding_i = model.dv.get_vector(i, norm=False)
+        # compute sim score
+        sim_score = np.dot(infered_embedding, embedding_i)/(norm(infered_embedding)*norm(embedding_i))
+        topk_score.append(sim_score)
+    topk_score = np.array(topk_score)
+    topk_ind = topk_score.argsort()[::-1][:n]
+    return topk_score, topk_ind
+
+
+def k_most_similar_ap(model, input_doc, company_dict, company_name, n=None, train=False):
+    '''
+    Arg: 
+    model: train doc2vec model
+    input_doc: all the documents we extract from html files
+    company_name: the company we want to measure average precision
+    company_dict: dictionary contains company name and corresponding index in the model
+
+    Return:
+    ap: average precision for the target company
+    '''
+    # for each input doc we need k predictions
+    # k is the total number of documents
+    # treat this as an document retrieval task
+    if train:
+        topk_score, topk_ind = k_most_similar_train(model, input_doc, n)
+    else:
+        topk_score, topk_ind = k_most_similar(model, input_doc, n)
+#     print(topk_score)
+#     print(topk_ind)
+    # get the range of target index
+    value1, value2 = company_dict[company_name][0], company_dict[company_name][1]
+    target_ind = np.arange(value1, value2)
+    num_target = len(target_ind)
+    num_corr=0
+    total_acc = 0
+    for i in range(len(topk_ind)):
+        # if the retrieval is correct
+        # add acc@i
+        # if not correct add 0
+        if topk_ind[i] in target_ind:
+            num_corr+=1 
+            total_acc += num_corr/(i+1)
+        else:
+            pass
+        
+    return total_acc/len(topk_ind)
+
+def get_map_model(company_index_dict):
+    '''
+    Arg: 
+    company_index_dict: dictionary contains company name and corresponding index in the model
+
+    Return:
+    map: mean average precision for all the company
+    '''
+    ap_lst = []
+    for key, value in company_index_dict.items():
+        for i in range(company_index_dict[key][0], company_index_dict[key][1]):
+            ap = k_most_similar_ap(model, i, company_index_dict, key, 5, train = True)
+            ap_lst.append(ap)
+    
+    return np.mean(ap_lst)
+
 
 
 if __name__ == '__main__':
@@ -731,8 +835,8 @@ if __name__ == '__main__':
     #                                                                summarized_all_documents)
 
     # sanity check
-    map = k_most_similar_ap(model, all_documents[125], company_index_dict, 'dogbeacon.com', 5)
-
+    map = get_map_model(company_index_dict)
+    print("The mAP@5 for all the companies is {}".format(map))
     # nxn matrix to check if pivot get reverted back or not
     company_check_dict = company_nn_sim_check(company_index_dict, company_nn_sim)
     print(company_check_dict)
