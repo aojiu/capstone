@@ -18,7 +18,7 @@ Then run the file for the complete pipeline
 ```
 python helper.py
 ```
-The final results will be stored in folder boolean_clustering_optK
+The final results will be stored in folder combined_pivot_si
 
 ## Pipeline
 The Pipeline is made of several parts.
