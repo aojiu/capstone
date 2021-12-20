@@ -2,7 +2,8 @@ import os
 import sys
 
 import nltk
-import RAKE
+#import RAKE
+from rake_nltk import Rake
 from numpy.linalg import norm
 
 nltk.download('punkt')
@@ -501,31 +502,47 @@ def pivot_detect(company_name_list, sensitivity_index, opt_num_of_clusters_dict,
     company_threshold = {}
     if sensitivity_index < 1 or sensitivity_index > 10:
         raise ValueError('Sensitivity index must be with 1 to 10')
-
-    if not os.path.exists('combined_pivot_si' + str(sensitivity_index)):
-        os.makedirs('combined_pivot_si' + str(sensitivity_index))
-        print('combined_pivot_si' + str(sensitivity_index) + " is created")
-
+        
+    if not os.path.exists('pivot_si_' + str(sensitivity_index)):
+        os.makedirs('pivot_si_' + str(sensitivity_index))
+        print('pivot_si_' + str(sensitivity_index) + " is created")
+    
     sim_scores_dict2 = sim_scores_dict.copy()
-
-    mapping = interp1d([0.1, 10], [-1, 10])
-
+    
+    mapping = interp1d([0.1, 10],[-1, 10])
+    
     for company in company_name_list:
         K = opt_num_of_clusters_dict[company][0]
         SI = sensitivity_index
-        x = float(mapping(SI / K))
+        x = float(mapping(SI/K))
 
         threshold = sigmoid(x)
         # store threshold for each company
         company_threshold[company] = threshold
 
         company_df = sim_scores_dict2[company]
-
+        
         company_df['pivot'] = company_df['similarity'] < threshold
         company_df['pivot'] = company_df['pivot'].astype(int)
-        company_df.to_csv('combined_pivot_si' + str(sensitivity_index) + "/" + company + ".csv")
-
+        company_df.to_csv('pivot_si_' + str(sensitivity_index) + "/" + company + ".csv")
+        
     return sim_scores_dict2
+
+def combine_dfs_pivots(company_name_list, sim_scores_dict2, boolean_cluster_dict, dbscan_dict, si):
+    """
+    Save combined similarity score + boolean_cluster result + dbscan result + pivot for each company
+    """
+    for company_name in company_name_list:
+        df_sim_score = sim_scores_dict2[company_name].set_index('timestamp')
+        df_boolean_cluster = boolean_cluster_dict[company_name].set_index('timestamp')
+
+        combined_df = df_sim_score.join(df_boolean_cluster)
+        combined_df['label_db'] = dbscan_dict[company_name][1:]
+
+        outdir3 = "./combined_SI_" + str(si)
+        if not os.path.exists(outdir3):
+            os.mkdir(outdir3)
+        combined_df.to_csv(outdir3 + "/" + company_name + ".csv")
 
 
 # def summerize_docs(all_documents):
@@ -854,7 +871,9 @@ if __name__ == '__main__':
     # # save combined result to csv files
     combine_dfs(company_name_list, sim_scores_dict, boolean_cluster_dict, dbscan_dict)
 
-    si = 5
+    si = 3
     # adds pivot detection columns on each similarity score csv files
     # and save under new directory specifying the sensitivity index
     similarity_pivot_df = pivot_detect(company_name_list, si, opt_num_of_clusters_dict, sim_scores_dict)
+    # # save combined result and pivot classification result to csv files
+    combine_dfs_pivots(company_name_list, similarity_pivot_df, boolean_cluster_dict, dbscan_dict, si)
